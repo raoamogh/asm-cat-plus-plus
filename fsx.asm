@@ -12,11 +12,17 @@ _start:
     mov rbx, [rsp]
     cmp rbx, 2
     jl exit
-    mov rdi, [rsp+16]
+    
+    mov r13, 1
+
+next_file:
+    cmp r13, rbx
+    jge exit
+    mov rdi, [rsp+r13*8+8]
     mov rax, 2
     mov rsi, 0
     syscall
-    cmp rax,0
+    cmp rax, 0
     jl open_error
     mov r12, rax
 
@@ -27,8 +33,8 @@ read_loop:
     mov rdx, 4096
     syscall
     cmp rax, 0
-    je done
-    jl done
+    je close_file
+    jl close_file
     mov rdx, rax
     mov rax, 1
     mov rdi, 1
@@ -36,17 +42,21 @@ read_loop:
     syscall
     jmp read_loop
 
+close_file:
+    mov rax, 3
+    mov rdi, r12
+    syscall
+    inc r13
+    jmp next_file
+
 open_error:
     mov rax, 1
     mov rdi, 1
     mov rsi, err_msg
     mov rdx, err_len
     syscall
-
-done:
-    mov rax, 60
-    xor rdi, rdi
-    syscall
+    inc r13
+    jmp next_file
 
 exit:
     mov rax, 60
