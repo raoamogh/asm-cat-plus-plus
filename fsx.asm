@@ -1,6 +1,7 @@
 section .data
 err_msg db "Error: Cannot Open File", 10
 err_len equ $ - err_msg
+newline db 10
 
 section .bss
 buffer resb 4096
@@ -46,9 +47,15 @@ close_file:
     mov rax, 3
     mov rdi, r12
     syscall
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, newline
+    mov rdx, 1
+    syscall
+
     inc r13
     jmp next_file
-
+   
 open_error:
     mov rax, 1
     mov rdi, 1
