@@ -1,39 +1,54 @@
 section .data
-filename db "file.txt",0
+err_msg db "Error: Cannot Open File", 10
+err_len equ $ - err_msg
 
 section .bss
-buffer resb 64
+buffer resb 4096
 
 section .text
 global _start
 
 _start:
+    mov rbx, [rsp]
+    cmp rbx, 2
+    jl exit
+    mov rdi, [rsp+16]
     mov rax, 2
-    mov rdi, filename
     mov rsi, 0
     syscall
-
-    mov rbx, rax
+    cmp rax,0
+    jl open_error
+    mov r12, rax
 
 read_loop:
     mov rax, 0
-    mov rdi, rbx
+    mov rdi, r12
     mov rsi, buffer
-    mov rdx, 64
+    mov rdx, 4096
     syscall
-
     cmp rax, 0
     je done
-
+    jl done
     mov rdx, rax
     mov rax, 1
     mov rdi, 1
     mov rsi, buffer
     syscall
-
     jmp read_loop
+
+open_error:
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, err_msg
+    mov rdx, err_len
+    syscall
 
 done:
     mov rax, 60
-    mov rdi, 0
+    xor rdi, rdi
+    syscall
+
+exit:
+    mov rax, 60
+    xor rdi, rdi
     syscall
