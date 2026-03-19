@@ -18,116 +18,153 @@ section .data
 section .bss
     buffer resb 4096
     num_buf resb 32
+    current_idx resq 1
 
 section .text
     global _start
 
 _start:
-    pop rax 
-    cmp rax, 3
+    mov rbx, [rsp]
+    cmp rbx, 2
     jl exit_program
 
-    mov rdi, [rsp+8]  
-    
+    mov rdi, [rsp+16]
     mov rsi, stats_flag
     call strcmp
     test rax, rax
-    je stats_mode
+    je stats_init
 
-    mov rdi, [rsp+8]
+    mov rdi, [rsp+16]
     mov rsi, highlight_prefix
     mov rdx, 12
     call strncmp
     test rax, rax
-    je highlight_prep
+    je highlight_init
 
-    jmp exit_program
+    mov qword [current_idx], 2
+    jmp default_loop
 
-highlight_prep:
-    mov r14, [rsp+8]
+highlight_init:
+    mov r14, [rsp+16]
     add r14, 12
-    mov rdi, [rsp+16]
+    mov qword [current_idx], 3
+    jmp highlight_loop
+
+stats_init:
+    mov qword [current_idx], 3
+    jmp stats_loop
+
+default_loop:
+    mov rbx, [rsp]
+    mov rsi, [current_idx]
+    cmp rsi, rbx
+    jg exit_program
+    mov rdi, [rsp + rsi*8]
     mov rax, 2
     xor rsi, rsi
     syscall
     cmp rax, 0
-    jl open_error
+    jl open_error_d
     mov r15, rax
-
-.read_loop:
+.r:
     mov rax, 0
     mov rdi, r15
     mov rsi, buffer
     mov rdx, 4096
     syscall
     cmp rax, 0
-    jle .done_highlight
+    jle .c
+    mov rdx, rax
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, buffer
+    syscall
+    jmp .r
+.c:
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, newline
+    mov rdx, 1
+    syscall
+    mov rax, 3
+    mov rdi, r15
+    syscall
+    inc qword [current_idx]
+    jmp default_loop
+
+highlight_loop:
+    mov rbx, [rsp]
+    mov rsi, [current_idx]
+    cmp rsi, rbx
+    jg exit_program
+    mov rdi, [rsp + rsi*8]
+    mov rax, 2
+    xor rsi, rsi
+    syscall
+    cmp rax, 0
+    jl open_error_h
+    mov r15, rax
+.read:
+    mov rax, 0
+    mov rdi, r15
+    mov rsi, buffer
+    mov rdx, 4096
+    syscall
+    cmp rax, 0
+    jle .close
     mov r13, rax
     xor r12, r12
-
 .scan:
     cmp r12, r13
-    jge .read_loop
-
+    jge .read
     mov rbx, r14
     mov r10, r12
     xor rbp, rbp
-
-.match_check:
-    movzx r8, byte [rbx]
-    test r8, r8
-    jz .found_match
-
+.match:
+    movzx rdx, byte [rbx]
+    test rdx, rdx
+    jz .found
     cmp r10, r13
     je .no_match
-
-    movzx r9, byte [buffer + r10]
-
-    mov r11, r8
+    movzx rax, byte [buffer + r10]
+    mov r9, rdx
+    cmp r9, 'A'
+    jl .c1
+    cmp r9, 'Z'
+    jg .c1
+    or r9, 0x20
+.c1:
+    mov r11, rax
     cmp r11, 'A'
-    jl .skip_p1
+    jl .c2
     cmp r11, 'Z'
-    jg .skip_p1
+    jg .c2
     or r11, 0x20
-.skip_p1:
-    mov rdx, r9
-    cmp rdx, 'A'
-    jl .skip_p2
-    cmp rdx, 'Z'
-    jg .skip_p2
-    or rdx, 0x20
-.skip_p2:
-
-    cmp r11, rdx
+.c2:
+    cmp r9, r11
     jne .no_match
-
     inc rbx
     inc r10
     inc rbp
-    jmp .match_check
-
-.found_match:
+    jmp .match
+.found:
     mov rax, 1
     mov rdi, 1
     mov rsi, red_start
     mov rdx, red_len
     syscall
-
     mov rax, 1
     mov rdi, 1
     lea rsi, [buffer + r12]
     mov rdx, rbp
     syscall
-
     mov rax, 1
     mov rdi, 1
     mov rsi, red_end
     mov rdx, red_end_len
     syscall
-
     add r12, rbp
     jmp .scan
-
 .no_match:
     mov rax, 1
     mov rdi, 1
@@ -136,76 +173,72 @@ highlight_prep:
     syscall
     inc r12
     jmp .scan
-
-.done_highlight:
+.close:
     mov rax, 1
     mov rdi, 1
     mov rsi, newline
     mov rdx, 1
     syscall
-
-    mov rax, 3          
+    mov rax, 3
     mov rdi, r15
     syscall
-    jmp exit_program
+    inc qword [current_idx]
+    jmp highlight_loop
 
-stats_mode:
-    mov rdi, [rsp+16]
+stats_loop:
+    mov rbx, [rsp]
+    mov rsi, [current_idx]
+    cmp rsi, rbx
+    jg exit_program
+    mov rdi, [rsp + rsi*8]
     mov rax, 2
     xor rsi, rsi
     syscall
     cmp rax, 0
-    jl open_error
+    jl open_error_s
     mov r15, rax
-
     xor r8, r8
     xor r9, r9
     xor r10, r10
     xor r11, r11
-
-.stats_read:
+.read:
     mov rax, 0
     mov rdi, r15
     mov rsi, buffer
     mov rdx, 4096
     syscall
     cmp rax, 0
-    jle .stats_done
+    jle .done
     add r8, rax
-    
     xor rcx, rcx
-.stats_loop:
+.l:
     cmp rcx, rax
-    jge .stats_read
+    jge .read
     movzx rbx, byte [buffer + rcx]
-
     cmp rbx, 10
-    jne .check_ws
+    jne .w
     inc r9
-.check_ws:
+.w:
     cmp rbx, 32
-    je .is_ws
+    je .is_w
     cmp rbx, 10
-    je .is_ws
+    je .is_w
     cmp rbx, 9
-    je .is_ws
-
+    je .is_w
     test r11, r11
-    jnz .next_char
+    jnz .next
     inc r10
     mov r11, 1
-    jmp .next_char
-.is_ws:
+    jmp .next
+.is_w:
     xor r11, r11
-.next_char:
+.next:
     inc rcx
-    jmp .stats_loop
-
-.stats_done:
+    jmp .l
+.done:
     mov rax, 3
     mov rdi, r15
     syscall
-
     mov rax, 1
     mov rdi, 1
     mov rsi, msg_lines
@@ -213,7 +246,6 @@ stats_mode:
     syscall
     mov rax, r9
     call print_number
-
     mov rax, 1
     mov rdi, 1
     mov rsi, msg_words
@@ -221,7 +253,6 @@ stats_mode:
     syscall
     mov rax, r10
     call print_number
-
     mov rax, 1
     mov rdi, 1
     mov rsi, msg_bytes
@@ -229,14 +260,35 @@ stats_mode:
     syscall
     mov rax, r8
     call print_number
-    jmp exit_program
+    inc qword [current_idx]
+    jmp stats_loop
 
-open_error:
+open_error_d:
     mov rax, 1
     mov rdi, 2
     mov rsi, err_msg
     mov rdx, err_len
     syscall
+    inc qword [current_idx]
+    jmp default_loop
+
+open_error_h:
+    mov rax, 1
+    mov rdi, 2
+    mov rsi, err_msg
+    mov rdx, err_len
+    syscall
+    inc qword [current_idx]
+    jmp highlight_loop
+
+open_error_s:
+    mov rax, 1
+    mov rdi, 2
+    mov rsi, err_msg
+    mov rdx, err_len
+    syscall
+    inc qword [current_idx]
+    jmp stats_loop
 
 exit_program:
     mov rax, 60
@@ -289,29 +341,25 @@ print_number:
     lea rsi, [num_buf + 31]
     mov byte [rsi], 0
     mov r12, rsi
-    
     test rax, rax
-    jnz .convert
+    jnz .conv
     dec rsi
     mov byte [rsi], '0'
-    jmp .output
-
-.convert:
+    jmp .out
+.conv:
     xor rdx, rdx
     div rbx
     add dl, '0'
     dec rsi
     mov [rsi], dl
     test rax, rax
-    jnz .convert
-
-.output:
+    jnz .conv
+.out:
     mov rdx, r12
     sub rdx, rsi
     mov rax, 1
     mov rdi, 1
     syscall
-
     mov rax, 1
     mov rdi, 1
     mov rsi, newline
